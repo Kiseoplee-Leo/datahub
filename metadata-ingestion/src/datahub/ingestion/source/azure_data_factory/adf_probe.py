@@ -1,4 +1,5 @@
-from typing import Callable, Dict, Iterable, List, Optional, TypeVar
+from collections import deque
+from typing import Callable, Deque, Dict, Iterable, List, Optional, TypeVar
 
 from azure.core.credentials import TokenCredential
 from azure.core.exceptions import HttpResponseError, ResourceNotFoundError
@@ -33,31 +34,12 @@ from datahub.ingestion.source.common.subtypes import FlowContainerSubTypes
 
 _T = TypeVar("_T")
 
-# The attributes an ADF control activity keeps its children in. Ingestion walks
-# only pipeline.activities (AzureDataFactorySource._process_pipelines), so
-# anything under these never becomes a DataJob.
-_NESTED_ACTIVITY_ATTRS = (
-    "activities",  # ForEach, Until
-    "if_true_activities",  # IfCondition
-    "if_false_activities",
-    "default_activities",  # Switch
-)
-
-
-def _nested_activity_count(activity: object) -> int:
-    children: List[object] = []
-    for attr in _NESTED_ACTIVITY_ATTRS:
-        children.extend(getattr(activity, attr, None) or [])
-    for case in getattr(activity, "cases", None) or []:  # Switch
-        children.extend(getattr(case, "activities", None) or [])
-    return sum(1 + _nested_activity_count(child) for child in children)
-
 
 def _activity_record(activity: Activity) -> Dict[str, object]:
     # An allowlist, not a dump: type properties hold Web activity headers and
     # auth, Script/Copy SQL text and stored-procedure parameters.
     activity_type = activity.type or "Unknown"
-    record: Dict[str, object] = {
+    return {
         # "Unknown" as _create_datajob names it, so this is the emitted DataJob name.
         "name": activity.name or "Unknown",
         "type": activity_type,
@@ -66,10 +48,6 @@ def _activity_record(activity: Activity) -> Dict[str, object]:
         "inputs": [r.reference_name for r in getattr(activity, "inputs", None) or []],
         "outputs": [r.reference_name for r in getattr(activity, "outputs", None) or []],
     }
-    nested = _nested_activity_count(activity)
-    if nested:
-        record["nested_activities"] = nested
-    return record
 
 
 def _unresolved_reason(
@@ -318,26 +296,28 @@ class AzureDataFactoryMetadataProbe(ProbeProviderBase):
 
     @probe_method(kind=ADF_ACTIVITY_KIND, parent_params=("factory", "pipeline"))
     def activities(self, factory: str, pipeline: str) -> List[Dict[str, object]]:
-        """Top-level activities of one pipeline, by factory and pipeline name --
+        """All activities of one pipeline, by factory and pipeline name --
         exactly the ones ingestion emits as DataJobs, each with the DataHub
         subtype it gets. Nothing filters activities; they follow their
-        pipeline's verdict. Activities nested in ForEach/IfCondition/Until/
-        Switch are counted on their container as nested_activities, because
-        ingestion does not emit them. inputs/outputs are ADF dataset names;
+        pipeline's verdict. Includes activities nested inside
+        ForEach/IfCondition/Until/Switch control activities, traversed the
+        same way ingestion does (AzureDataFactorySource._get_nested_activities),
+        since those get DataJobs too. inputs/outputs are ADF dataset names;
         resolve them with `datasets`. Activity settings (URLs, headers, SQL,
         parameters) are withheld."""
         resource = self._pipeline(factory, pipeline)
         if resource is None:
             return []
-        records = [_activity_record(a) for a in resource.activities or []]
-        nested = sum(_nested_activity_count(a) for a in resource.activities or [])
-        if nested:
-            self._warn(
-                f"{nested} activit{'y is' if nested == 1 else 'ies are'} nested "
-                f"inside control activities (ForEach/IfCondition/Until/Switch); "
-                f"ingestion emits only top-level activities, so these will not "
-                f"appear as DataJobs"
-            )
+        records: List[Dict[str, object]] = []
+        activities_to_process: Deque[Activity] = deque(resource.activities or [])
+        visited_activity_ids: set = set()
+        while activities_to_process:
+            activity = activities_to_process.popleft()
+            if id(activity) in visited_activity_ids:
+                continue
+            visited_activity_ids.add(id(activity))
+            records.append(_activity_record(activity))
+            activities_to_process.extend(self._source._get_nested_activities(activity))
         return records
 
     def _pipeline(self, factory: str, pipeline: str) -> Optional[PipelineResource]:
