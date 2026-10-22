@@ -249,14 +249,16 @@ public class V3SearchDocumentProjector {
   /**
    * A shared-label hasValues boolean is written under the aspect, at the declared name, only when a
    * source in this aspect is populated. {@code copy_to} sends that true to the degree's root name
-   * ({@code hasDescription} or {@code hasDescription_1}). The declared name is cleared on the root
-   * so a column value is not indexed as the entity's own boolean.
+   * ({@code hasDescription} or {@code hasDescription_1}) and to {@code v3.hasValuesFieldName} when
+   * that additional boolean is set. Those names are cleared on the root so a column value is not
+   * indexed as the entity's own boolean. The additional name is not stored under the aspect.
    */
   @Nonnull
   private static Set<String> placeSharedHasValues(
       @Nonnull final AspectSpec aspectSpec, @Nonnull final ObjectNode projectedFields) {
     final Set<String> names = new LinkedHashSet<>();
     final Set<String> populated = new LinkedHashSet<>();
+    final Set<String> normalized = new LinkedHashSet<>();
     for (SearchableFieldSpec fieldSpec : aspectSpec.getSearchableFieldSpecs()) {
       final SearchableAnnotation annotation = fieldSpec.getSearchableAnnotation();
       final SearchableAnnotation resolved = annotation.resolvedForV3();
@@ -267,15 +269,22 @@ public class V3SearchDocumentProjector {
       if (label.isEmpty()) {
         continue;
       }
-      resolved
-          .getHasValuesFieldName()
-          .ifPresent(
-              booleanName -> {
-                names.add(booleanName);
-                if (sourcePopulated(annotation, projectedFields)) {
-                  populated.add(booleanName);
-                }
-              });
+      Optional<String> declared = resolved.getHasValuesFieldName();
+      Optional<String> shared = SearchableAnnotation.sharedHasValuesName(resolved);
+      if (declared != null && declared.isPresent()) {
+        names.add(declared.get());
+        if (sourcePopulated(annotation, projectedFields)) {
+          populated.add(declared.get());
+        }
+        shared
+            .filter(name -> !name.equals(declared.get()) && !names.contains(name))
+            .ifPresent(normalized::add);
+      } else if (shared.isPresent()) {
+        names.add(shared.get());
+        if (sourcePopulated(annotation, projectedFields)) {
+          populated.add(shared.get());
+        }
+      }
     }
     for (String name : names) {
       if (populated.contains(name)) {
@@ -284,6 +293,12 @@ public class V3SearchDocumentProjector {
         projectedFields.remove(name);
       }
     }
+    // The normalized boolean is a copy_to target. Clear a previous root true and do not store it
+    // under the aspect.
+    for (String name : normalized) {
+      projectedFields.remove(name);
+    }
+    names.addAll(normalized);
     return names;
   }
 
