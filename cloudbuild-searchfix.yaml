@@ -1,12 +1,34 @@
 
 steps:
+  # 1. Java 컴파일 및 GMS 실행 패키지 제작
   - name: 'eclipse-temurin:17-jdk'
+    id: 'build-gms'
     entrypoint: 'bash'
     args:
       - '-c'
       - |
+        set -e
         chmod +x ./gradlew
-        ./gradlew :metadata-io:compileJava --no-daemon --max-workers=2
+        ./gradlew :metadata-service:war:bootJar --no-daemon --max-workers=2
+        ls -lh metadata-service/war/build/libs/war.war
+
+  # 2. GMS Docker 이미지 제작
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'docker-build'
+    args:
+      - 'build'
+      - '-f'
+      - 'docker/datahub-gms/Dockerfile'
+      - '-t'
+      - 'asia-northeast3-docker.pkg.dev/cloud-lab-510807/gnaix-lab/datahub-gms:v1.3.0-searchfix'
+      - '.'
+
+  # 3. Artifact Registry에 업로드
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'docker-push'
+    args:
+      - 'push'
+      - 'asia-northeast3-docker.pkg.dev/cloud-lab-510807/gnaix-lab/datahub-gms:v1.3.0-searchfix'
 
 options:
   machineType: 'E2_HIGHCPU_8'
