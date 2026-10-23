@@ -18,7 +18,6 @@ steps:
     id: 'docker-build'
     args:
       - 'build'
-      - '--progress=plain'
       - '-f'
       - 'docker/datahub-gms/Dockerfile'
       - '-t'
