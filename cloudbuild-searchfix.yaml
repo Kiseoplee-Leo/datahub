@@ -1,0 +1,14 @@
+steps:
+  - name: 'eclipse-temurin:17-jdk'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        chmod +x ./gradlew
+        ./gradlew :metadata-io:compileJava --no-daemon --max-workers=2
+
+options:
+  machineType: 'E2_HIGHCPU_8'
+  diskSizeGb: 100
+
+timeout: '3600s'
