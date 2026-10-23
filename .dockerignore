@@ -25,3 +25,7 @@ out
 
 /metadata-ingestion/tests
 /metadata-ingestion/examples
+
+!metadata-service/war/build/
+!metadata-service/war/build/libs/
+!metadata-service/war/build/libs/war.war
