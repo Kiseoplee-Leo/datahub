@@ -1656,7 +1656,11 @@ public class Es8SearchClientShim implements ElasticSearchClientShim<Elasticsearc
   }
 
   private FieldSuggester convertSuggestion(SuggestionBuilder<?> suggestionBuilder) {
-    String jsonString = suggestionBuilder.toString();
+    String jsonString = org.opensearch.core.common.Strings.toString(
+    org.opensearch.core.xcontent.MediaTypeRegistry.JSON,
+    suggestionBuilder,
+    true,
+    true);
     return FieldSuggester.of(
         q ->
             q.withJson(
