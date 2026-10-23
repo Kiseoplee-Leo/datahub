@@ -11,6 +11,7 @@ steps:
         chmod +x ./gradlew
         ./gradlew :metadata-service:war:bootJar --no-daemon --max-workers=2
         ls -lh metadata-service/war/build/libs/war.war
+        test -s metadata-service/war/build/libs/war.war
 
   # 2. GMS Docker 이미지 제작
   - name: 'gcr.io/cloud-builders/docker'
