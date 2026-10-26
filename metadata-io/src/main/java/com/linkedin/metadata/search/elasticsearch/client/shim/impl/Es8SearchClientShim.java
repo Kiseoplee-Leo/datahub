@@ -1566,9 +1566,11 @@ public class Es8SearchClientShim implements ElasticSearchClientShim<Elasticsearc
                   .action(
                       new UpdateAction.Builder<>()
                           .doc(
-                              XContentHelper.convertToMap(
-                                      update.doc().source(), true, XContentType.JSON)
-                                  .v2())
+                              update.doc() == null
+                                  ? null
+                                  : XContentHelper.convertToMap(
+                                          update.doc().source(), true, XContentType.JSON)
+                                      .v2())
                           .detectNoop(update.detectNoop())
                           .docAsUpsert(update.docAsUpsert())
                           .script(script)
