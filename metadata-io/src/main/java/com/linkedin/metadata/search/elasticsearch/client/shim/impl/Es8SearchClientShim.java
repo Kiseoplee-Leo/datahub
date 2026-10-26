@@ -407,6 +407,12 @@ public class Es8SearchClientShim implements ElasticSearchClientShim<Elasticsearc
     co.elastic.clients.elasticsearch.core.SearchResponse<JsonNode> esSearchResponse =
         withTransportOptions(options).search(esSearchRequest.build(), JsonNode.class);
     String json = JsonpUtils.toJsonString(esSearchResponse, jacksonJsonpMapper);
+    com.fasterxml.jackson.databind.JsonNode responseTree =
+        new com.fasterxml.jackson.databind.ObjectMapper().readTree(json);
+    if (responseTree.isObject() && responseTree.has("suggest")) {
+      ((com.fasterxml.jackson.databind.node.ObjectNode) responseTree).remove("suggest");
+      json = responseTree.toString();
+    }
     return SearchResponse.fromXContent(
         XContentType.JSON
             .xContent()
@@ -1657,10 +1663,10 @@ public class Es8SearchClientShim implements ElasticSearchClientShim<Elasticsearc
 
   private FieldSuggester convertSuggestion(SuggestionBuilder<?> suggestionBuilder) {
     String jsonString = org.opensearch.core.common.Strings.toString(
-    org.opensearch.core.xcontent.MediaTypeRegistry.JSON,
-    suggestionBuilder,
-    true,
-    true);
+        org.opensearch.core.xcontent.MediaTypeRegistry.JSON,
+        suggestionBuilder,
+        true,
+        true);
     return FieldSuggester.of(
         q ->
             q.withJson(
